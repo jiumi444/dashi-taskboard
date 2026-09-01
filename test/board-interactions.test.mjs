@@ -219,6 +219,26 @@ test("exact-task return refreshes the task version after the Codex turn starts",
   assert.ok(continueIndex >= 0 && continueIndex < refreshIndex && refreshIndex < updateIndex);
 });
 
+test("exact-task return treats the post-send refresh as an irreversible status-update step", () => {
+  const handlerStart = detailSource.indexOf("async function submitComment");
+  const handlerEnd = detailSource.indexOf("\n\n  function handleSubmitShortcut", handlerStart);
+  const handler = detailSource.slice(handlerStart, handlerEnd);
+  assert.match(
+    handler,
+    /await onContinueThread[\s\S]*?try \{[\s\S]*?relationAnchor = await getTask\(relationAnchor\.id\)/,
+  );
+});
+
+test("exact-task return only moves the latest in-review task back to in-progress", () => {
+  const handlerStart = detailSource.indexOf("async function submitComment");
+  const handlerEnd = detailSource.indexOf("\n\n  function handleSubmitShortcut", handlerStart);
+  const handler = detailSource.slice(handlerStart, handlerEnd);
+  assert.match(
+    handler,
+    /relationAnchor = await getTask\(relationAnchor\.id\)[\s\S]*?relationAnchor\.status !== "in_review"[\s\S]*?return;[\s\S]*?onUpdate\(relationAnchor, \{ status: "in_progress" \}/,
+  );
+});
+
 test("comment mention relations persist before exact-task continuation", () => {
   const handlerStart = detailSource.indexOf("async function submitComment");
   const handlerEnd = detailSource.indexOf("\n\n  function handleSubmitShortcut", handlerStart);

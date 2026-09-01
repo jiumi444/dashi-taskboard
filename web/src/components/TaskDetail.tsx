@@ -873,8 +873,16 @@ export function TaskDetail({
           ));
         }
         await onContinueThread(relationAnchor, commentFeedback);
-        relationAnchor = await getTask(relationAnchor.id);
         try {
+          relationAnchor = await getTask(relationAnchor.id);
+          if (relationAnchor.status !== "in_review") {
+            setCurrentTask(relationAnchor);
+            setCommentsError(text(
+              "反馈已发送，但议题状态已变化，因此未改为处理中。请刷新议题；不要再次发送反馈。",
+              "Feedback was sent, but the issue status changed, so it was not moved to in progress. Refresh the issue; do not send the feedback again.",
+            ));
+            return;
+          }
           const saved = await onUpdate(relationAnchor, { status: "in_progress" }, { undo: false });
           setCurrentTask(saved);
           relationAnchor = saved;
