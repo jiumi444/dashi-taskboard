@@ -43,6 +43,8 @@
     "scheduled",
     "插件",
     "plugins",
+    "外掛程式",
+    "プラグイン",
   ];
   const PROJECT_SECTION_LABELS = ["projects", "项目"];
   const TASK_SECTION_LABELS = ["tasks", "任务", "chats", "对话"];

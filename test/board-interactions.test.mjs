@@ -181,6 +181,30 @@ test("in-review details expose acceptance and exact-task return actions", () => 
   assert.match(styles, /\.composer-footer \.button \{[\s\S]*?white-space: nowrap/);
 });
 
+test("only the Codex host exposes exact-task return", () => {
+  assert.match(appSource, /canContinueThread=\{host === "codex" && window\.parent !== window\}/);
+  const handlerStart = appSource.indexOf("function continueTaskThread");
+  const handlerEnd = appSource.indexOf("\n\n  function openLegacyLocalThread", handlerStart);
+  assert.match(appSource.slice(handlerStart, handlerEnd), /host !== "codex"/);
+});
+
+test("successful exact-task return does not enter the Taskboard undo queue", () => {
+  assert.match(
+    detailSource,
+    /onUpdate\(relationAnchor, \{ status: "in_progress" \}, \{ undo: false \}\)/,
+  );
+  assert.match(appSource, /options\?\.undo !== false && \(!assigneeTarget \|\| previousAssigneeTarget\)/);
+});
+
+test("comment mention relations persist before exact-task continuation", () => {
+  const handlerStart = detailSource.indexOf("async function submitComment");
+  const handlerEnd = detailSource.indexOf("\n\n  function handleSubmitShortcut", handlerStart);
+  const handler = detailSource.slice(handlerStart, handlerEnd);
+  const relationIndex = handler.indexOf("await addMentionRelations");
+  const continueIndex = handler.indexOf("await onContinueThread");
+  assert.ok(relationIndex >= 0 && relationIndex < continueIndex);
+});
+
 test("issue creation and detail share one searchable, creatable label picker", () => {
   assert.match(editorSource, /<LabelPicker/);
   assert.match(detailSource, /<LabelPicker/);

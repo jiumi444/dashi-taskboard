@@ -2353,16 +2353,16 @@ function installTaskboardHostBinding(
       ),
       continueTaskThread: async (request) => {
         const { threadBinding } = request;
-        const read = await requestCodexAppServerViaCdp(
+        const resumed = await requestCodexAppServerViaCdp(
           cdp,
           undefined,
           threadBinding.codexHostId,
-          "thread/read",
-          { threadId: threadBinding.threadId, includeTurns: false },
+          "thread/resume",
+          { threadId: threadBinding.threadId },
         );
         if (
-          read?.thread?.id !== threadBinding.threadId
-          || normalizeRemoteWorkspace(read.thread.cwd) !== normalizeRemoteWorkspace(threadBinding.workspacePath)
+          resumed?.thread?.id !== threadBinding.threadId
+          || normalizeRemoteWorkspace(resumed.thread.cwd) !== normalizeRemoteWorkspace(threadBinding.workspacePath)
         ) {
           throw new Error("The bound Codex task no longer matches its saved workspace");
         }

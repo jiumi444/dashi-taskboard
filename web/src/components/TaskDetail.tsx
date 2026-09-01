@@ -112,7 +112,11 @@ interface TaskDetailProps {
   attachmentsRevision: number;
   onCreateLabel: (label: string) => Promise<void>;
   onDeleteLabel: (label: string) => Promise<void>;
-  onUpdate: (task: Task, changes: Partial<TaskDraft>) => Promise<Task>;
+  onUpdate: (
+    task: Task,
+    changes: Partial<TaskDraft>,
+    options?: { undo?: boolean },
+  ) => Promise<Task>;
   onOpenTask: (task: TaskRelationSummary) => void;
   onAddRelation: (
     task: Task,
@@ -859,6 +863,7 @@ export function TaskDetail({
       setCommentSegments(createInlineMediaSegments());
       if (commentAttachmentInputRef.current) commentAttachmentInputRef.current.value = "";
       let relationAnchor = await getTask(currentTask.id);
+      relationAnchor = await addMentionRelations(relationAnchor, commentSegments);
       if (intent === "return") {
         if (relationAnchor.status !== "in_review" || !relationAnchor.threadBinding) {
           throw new Error(text(
@@ -868,7 +873,7 @@ export function TaskDetail({
         }
         await onContinueThread(relationAnchor, body);
         try {
-          const saved = await onUpdate(relationAnchor, { status: "in_progress" });
+          const saved = await onUpdate(relationAnchor, { status: "in_progress" }, { undo: false });
           setCurrentTask(saved);
           relationAnchor = saved;
           setChangeStatusToTodo(false);
@@ -885,8 +890,7 @@ export function TaskDetail({
         relationAnchor = saved;
         setChangeStatusToTodo(false);
       }
-      const savedWithRelations = await addMentionRelations(relationAnchor, commentSegments);
-      setCurrentTask(savedWithRelations);
+      setCurrentTask(relationAnchor);
       requestAnimationFrame(() => composerRef.current?.focus());
     } catch (error) {
       setCommentsError(messageFor(error));

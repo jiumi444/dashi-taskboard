@@ -2693,7 +2693,11 @@ export function App() {
     void moveTask(task, destination, beforeTaskId, true);
   }
 
-  async function updateTaskProperties(task: Task, changes: Partial<TaskDraft>): Promise<Task> {
+  async function updateTaskProperties(
+    task: Task,
+    changes: Partial<TaskDraft>,
+    options?: { undo?: boolean },
+  ): Promise<Task> {
     const previous = task;
     const { assigneeTarget, ...taskChanges } = changes;
     const optimisticAssignee = assigneeTarget
@@ -2716,7 +2720,7 @@ export function App() {
         candidate.id === updated.id ? updated : candidate,
       )));
       const previousAssigneeTarget = assigneeTargetForActor(previous.assignee, currentUser);
-      if (!assigneeTarget || previousAssigneeTarget) {
+      if (options?.undo !== false && (!assigneeTarget || previousAssigneeTarget)) {
         pushUndo(
           null,
           () => restoreTaskDetails(previous, updated, previousAssigneeTarget),
@@ -2976,7 +2980,7 @@ export function App() {
   }
 
   function continueTaskThread(task: Task, feedback: string): Promise<void> {
-    if (!embedded || window.parent === window || !task.threadBinding) {
+    if (host !== "codex" || window.parent === window || !task.threadBinding) {
       return Promise.reject(new Error(textRef.current(
         "当前议题没有可继续的完整 Codex 任务绑定。",
         "This issue does not have a complete Codex task binding to continue.",
@@ -3767,7 +3771,7 @@ export function App() {
             attachmentsRevision={attachmentsRevision}
             onCreateLabel={persistProjectLabel}
             onDeleteLabel={removeProjectLabel}
-            onUpdate={(current, changes) => updateTaskProperties(current, changes)}
+            onUpdate={(current, changes, options) => updateTaskProperties(current, changes, options)}
             onOpenTask={openTaskDetail}
             onAddRelation={(current, type, relatedTaskId, origin) => (
               mutateTaskRelation("add", current, type, relatedTaskId, origin)
@@ -3776,7 +3780,7 @@ export function App() {
               mutateTaskRelation("remove", current, type, relatedTaskId, origin)
             )}
             onOpenThread={openThread}
-            canContinueThread={embedded && window.parent !== window}
+            canContinueThread={host === "codex" && window.parent !== window}
             onContinueThread={continueTaskThread}
             onOpenLegacyLocalThread={openLegacyLocalThread}
             onOpenInThread={openTaskInThread}
