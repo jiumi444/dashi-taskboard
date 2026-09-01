@@ -447,6 +447,7 @@ export function TaskDetail({
   const editCommentAttachmentInputRef = useRef<HTMLInputElement>(null);
   const editingUploadedAttachmentsRef = useRef<Map<string, Attachment>>(new Map());
   const draft = serializeInlineMedia(commentSegments);
+  const commentFeedback = inlineMediaText(commentSegments).trim();
   const commentInlineImages = inlineMediaImages(commentSegments);
   const commentInlineFiles = inlineMediaFiles(commentSegments);
   const editingDraft = serializeInlineMedia(editingSegments);
@@ -834,7 +835,7 @@ export function TaskDetail({
     const body = draft.trim();
     if (
       intent === "return"
-      && (!body || currentTask.status !== "in_review" || !currentTask.threadBinding || !canContinueThread)
+      && (!commentFeedback || currentTask.status !== "in_review" || !currentTask.threadBinding || !canContinueThread)
     ) return;
     if ((!body && commentInlineImages.length === 0 && commentInlineFiles.length === 0) || submitting) return;
     setSubmitting(true);
@@ -871,7 +872,7 @@ export function TaskDetail({
             "The issue or task binding changed. Refresh and try again.",
           ));
         }
-        await onContinueThread(relationAnchor, body);
+        await onContinueThread(relationAnchor, commentFeedback);
         try {
           const saved = await onUpdate(relationAnchor, { status: "in_progress" }, { undo: false });
           setCurrentTask(saved);
@@ -1680,7 +1681,7 @@ export function TaskDetail({
                         <button
                           className="button primary"
                           type="button"
-                          disabled={!draft.trim() || submitting || !canContinueThread || !currentTask.threadBinding}
+                          disabled={!commentFeedback || submitting || !canContinueThread || !currentTask.threadBinding}
                           onClick={() => void submitComment("return")}
                         >
                           {submitting

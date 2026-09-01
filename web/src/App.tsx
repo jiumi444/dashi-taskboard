@@ -2720,7 +2720,10 @@ export function App() {
         candidate.id === updated.id ? updated : candidate,
       )));
       const previousAssigneeTarget = assigneeTargetForActor(previous.assignee, currentUser);
-      if (options?.undo !== false && (!assigneeTarget || previousAssigneeTarget)) {
+      if (options?.undo === false) {
+        undoStackRef.current = [];
+        setUndoNotice(null);
+      } else if (!assigneeTarget || previousAssigneeTarget) {
         pushUndo(
           null,
           () => restoreTaskDetails(previous, updated, previousAssigneeTarget),

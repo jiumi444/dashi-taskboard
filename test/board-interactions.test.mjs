@@ -188,12 +188,25 @@ test("only the Codex host exposes exact-task return", () => {
   assert.match(appSource.slice(handlerStart, handlerEnd), /host !== "codex"/);
 });
 
-test("successful exact-task return does not enter the Taskboard undo queue", () => {
+test("successful exact-task return invalidates the Taskboard undo queue", () => {
   assert.match(
     detailSource,
     /onUpdate\(relationAnchor, \{ status: "in_progress" \}, \{ undo: false \}\)/,
   );
-  assert.match(appSource, /options\?\.undo !== false && \(!assigneeTarget \|\| previousAssigneeTarget\)/);
+  assert.match(
+    appSource,
+    /if \(options\?\.undo === false\) \{[\s\S]*?undoStackRef\.current = \[\];[\s\S]*?setUndoNotice\(null\);/,
+  );
+});
+
+test("exact-task return requires and sends textual feedback", () => {
+  assert.match(detailSource, /const commentFeedback = inlineMediaText\(commentSegments\)\.trim\(\)/);
+  assert.match(detailSource, /intent === "return"[\s\S]*?\(!commentFeedback \|\| currentTask\.status/);
+  assert.match(detailSource, /onContinueThread\(relationAnchor, commentFeedback\)/);
+  assert.match(
+    detailSource,
+    /disabled=\{!commentFeedback \|\| submitting \|\| !canContinueThread \|\| !currentTask\.threadBinding\}/,
+  );
 });
 
 test("comment mention relations persist before exact-task continuation", () => {
