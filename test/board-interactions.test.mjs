@@ -266,8 +266,8 @@ test("archived in-review tasks cannot expose or execute acceptance actions", () 
 });
 
 test("exact-task return does not overlap task property saves", () => {
-  assert.match(detailSource, /async function saveTask[\s\S]*?if \(submitting\) return null;/);
-  assert.match(detailSource, /async function saveDescription[\s\S]*?if \(submitting \|\| savingProperty === "description"\) return;/);
+  assert.match(detailSource, /async function saveTask[\s\S]*?if \(submitting \|\| savingProperty !== null\) return null;/);
+  assert.match(detailSource, /async function saveDescription[\s\S]*?if \(submitting \|\| savingProperty !== null\) return;/);
   assert.match(
     detailSource,
     /intent === "return"[\s\S]*?savingProperty !== null/,
@@ -276,6 +276,17 @@ test("exact-task return does not overlap task property saves", () => {
     detailSource,
     /disabled=\{!commentFeedback \|\| submitting \|\| savingProperty !== null/,
   );
+});
+
+test("post-send failures remain visible after the detail component unmounts", () => {
+  assert.match(
+    detailSource,
+    /function reportSentStatusError[\s\S]*?setCommentsError\(message\)[\s\S]*?onError\(message\)/,
+  );
+  const handlerStart = detailSource.indexOf("async function submitComment");
+  const handlerEnd = detailSource.indexOf("\n\n  function handleSubmitShortcut", handlerStart);
+  const handler = detailSource.slice(handlerStart, handlerEnd);
+  assert.equal(handler.match(/reportSentStatusError\(text\(/g)?.length, 2);
 });
 
 test("comment mention relations persist before exact-task continuation", () => {

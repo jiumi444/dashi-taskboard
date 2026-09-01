@@ -598,8 +598,13 @@ export function TaskDetail({
     };
   }, [activeMenuId]);
 
+  function reportSentStatusError(message: TaskDetailError) {
+    setCommentsError(message);
+    onError(message);
+  }
+
   async function saveTask(changes: Partial<TaskDraft>, property: string) {
-    if (submitting) return null;
+    if (submitting || savingProperty !== null) return null;
     setSavingProperty(property);
     onError(null);
     try {
@@ -774,7 +779,7 @@ export function TaskDetail({
   }
 
   async function saveDescription() {
-    if (submitting || savingProperty === "description") return;
+    if (submitting || savingProperty !== null) return;
     const draftDescription = serializeInlineMedia(descriptionSegments).trim();
     const inlineImages = inlineMediaImages(descriptionSegments);
     const inlineFiles = inlineMediaFiles(descriptionSegments);
@@ -903,7 +908,7 @@ export function TaskDetail({
             || !sameThreadBinding(relationAnchor.threadBinding, continuedBinding)
           ) {
             setCurrentTask(relationAnchor);
-            setCommentsError(text(
+            reportSentStatusError(text(
               "反馈已发送，但议题状态或任务绑定已变化，因此未改为处理中。请刷新议题；不要再次发送反馈。",
               "Feedback was sent, but the issue status or task binding changed, so it was not moved to in progress. Refresh the issue; do not send the feedback again.",
             ));
@@ -914,7 +919,7 @@ export function TaskDetail({
           relationAnchor = saved;
           setChangeStatusToTodo(false);
         } catch {
-          setCommentsError(text(
+          reportSentStatusError(text(
             "反馈已发送，但状态更新失败。请刷新议题；不要再次发送反馈。",
             "Feedback was sent, but the status update failed. Refresh the issue; do not send the feedback again.",
           ));
