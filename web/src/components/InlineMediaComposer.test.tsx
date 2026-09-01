@@ -5,6 +5,7 @@ import type { ComposerCandidatesResponse, Task } from "../types";
 import {
   createInlineMediaSegments,
   InlineMediaComposer,
+  inlineMediaText,
   serializeInlineMedia,
   type InlineMediaSegment,
 } from "./InlineMediaComposer";
@@ -97,6 +98,21 @@ describe("InlineMediaComposer completion references", () => {
   afterEach(() => {
     document.body.replaceChildren();
     api.getCandidates.mockReset();
+  });
+
+  it("preserves paragraph boundaries when pending attachments are omitted from text", () => {
+    const segments: InlineMediaSegment[] = [
+      { id: "text-1", type: "text", text: "Fix title" },
+      {
+        id: "attachment-1",
+        type: "pending-attachment",
+        token: "<!--taskboard-inline-attachment:attachment-1-->",
+        file: new File(["proof"], "proof.txt", { type: "text/plain" }),
+      },
+      { id: "text-2", type: "text", text: "then rerun" },
+    ];
+
+    expect(inlineMediaText(segments)).toBe("Fix title\n\nthen rerun");
   });
 
   it("round trips only strict v1 Skill and Agent markers as durable atoms", () => {

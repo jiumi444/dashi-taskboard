@@ -209,6 +209,16 @@ test("exact-task return requires and sends textual feedback", () => {
   );
 });
 
+test("exact-task return refreshes the task version after the Codex turn starts", () => {
+  const handlerStart = detailSource.indexOf("async function submitComment");
+  const handlerEnd = detailSource.indexOf("\n\n  function handleSubmitShortcut", handlerStart);
+  const handler = detailSource.slice(handlerStart, handlerEnd);
+  const continueIndex = handler.indexOf("await onContinueThread");
+  const refreshIndex = handler.indexOf("relationAnchor = await getTask(relationAnchor.id)", continueIndex);
+  const updateIndex = handler.indexOf("await onUpdate(relationAnchor", continueIndex);
+  assert.ok(continueIndex >= 0 && continueIndex < refreshIndex && refreshIndex < updateIndex);
+});
+
 test("comment mention relations persist before exact-task continuation", () => {
   const handlerStart = detailSource.indexOf("async function submitComment");
   const handlerEnd = detailSource.indexOf("\n\n  function handleSubmitShortcut", handlerStart);

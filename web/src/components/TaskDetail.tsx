@@ -873,6 +873,7 @@ export function TaskDetail({
           ));
         }
         await onContinueThread(relationAnchor, commentFeedback);
+        relationAnchor = await getTask(relationAnchor.id);
         try {
           const saved = await onUpdate(relationAnchor, { status: "in_progress" }, { undo: false });
           setCurrentTask(saved);

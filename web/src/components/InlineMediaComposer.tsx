@@ -601,11 +601,11 @@ export function inlineMediaComposerReferences(
 }
 
 export function inlineMediaText(segments: InlineMediaSegment[]): string {
-  return segments.map((segment) => {
-    if (segment.type === "text") return segment.text;
-    if (segment.type === "pending-image" || segment.type === "pending-attachment") return "";
-    return segment.markdown;
-  }).join("");
+  return segments.reduce((text, segment) => (
+    segment.type === "pending-image" || segment.type === "pending-attachment"
+      ? text.replace(segment.token, "")
+      : text
+  ), serializeInlineMedia(segments));
 }
 
 function isTaskboardAttachmentMedia(segment: InlineMediaSegment | undefined): boolean {
