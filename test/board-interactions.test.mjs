@@ -201,11 +201,11 @@ test("successful exact-task return invalidates the Taskboard undo queue", () => 
 
 test("exact-task return requires and sends textual feedback", () => {
   assert.match(detailSource, /const commentFeedback = inlineMediaText\(commentSegments\)\.trim\(\)/);
-  assert.match(detailSource, /intent === "return"[\s\S]*?\(!commentFeedback \|\| currentTask\.status/);
+  assert.match(detailSource, /intent === "return"[\s\S]*?!commentFeedback[\s\S]*?currentTask\.status/);
   assert.match(detailSource, /onContinueThread\(relationAnchor, commentFeedback\)/);
   assert.match(
     detailSource,
-    /disabled=\{!commentFeedback \|\| submitting \|\| !canContinueThread \|\| !currentTask\.threadBinding\}/,
+    /disabled=\{!commentFeedback \|\| submitting[\s\S]*?!canContinueThread \|\| !currentTask\.threadBinding\}/,
   );
 });
 
@@ -236,6 +236,45 @@ test("exact-task return only moves the latest in-review task back to in-progress
   assert.match(
     handler,
     /relationAnchor = await getTask\(relationAnchor\.id\)[\s\S]*?relationAnchor\.status !== "in_review"[\s\S]*?return;[\s\S]*?onUpdate\(relationAnchor, \{ status: "in_progress" \}/,
+  );
+});
+
+test("exact-task return keeps the task bound to the thread that was continued", () => {
+  const handlerStart = detailSource.indexOf("async function submitComment");
+  const handlerEnd = detailSource.indexOf("\n\n  function handleSubmitShortcut", handlerStart);
+  const handler = detailSource.slice(handlerStart, handlerEnd);
+  assert.match(handler, /const continuedBinding = relationAnchor\.threadBinding/);
+  assert.match(
+    handler,
+    /relationAnchor = await getTask\(relationAnchor\.id\)[\s\S]*?!sameThreadBinding\(relationAnchor\.threadBinding, continuedBinding\)[\s\S]*?return;[\s\S]*?onUpdate\(relationAnchor, \{ status: "in_progress" \}/,
+  );
+});
+
+test("archived in-review tasks cannot expose or execute acceptance actions", () => {
+  assert.match(
+    detailSource,
+    /currentTask\.status === "in_review" && currentTask\.archivedAt === null/,
+  );
+  assert.match(
+    detailSource,
+    /intent === "return"[\s\S]*?currentTask\.archivedAt !== null/,
+  );
+  assert.match(
+    detailSource,
+    /relationAnchor = await getTask\(relationAnchor\.id\)[\s\S]*?relationAnchor\.archivedAt !== null[\s\S]*?return;/,
+  );
+});
+
+test("exact-task return does not overlap task property saves", () => {
+  assert.match(detailSource, /async function saveTask[\s\S]*?if \(submitting\) return null;/);
+  assert.match(detailSource, /async function saveDescription[\s\S]*?if \(submitting \|\| savingProperty === "description"\) return;/);
+  assert.match(
+    detailSource,
+    /intent === "return"[\s\S]*?savingProperty !== null/,
+  );
+  assert.match(
+    detailSource,
+    /disabled=\{!commentFeedback \|\| submitting \|\| savingProperty !== null/,
   );
 });
 

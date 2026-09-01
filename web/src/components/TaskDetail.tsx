@@ -156,6 +156,15 @@ function issueMessageFor(error: unknown): TaskDetailError {
   return messageFor(error);
 }
 
+function sameThreadBinding(left: CodexThreadBinding | null, right: CodexThreadBinding): boolean {
+  return left !== null
+    && left.threadId === right.threadId
+    && left.codexHostId === right.codexHostId
+    && left.codexProjectId === right.codexProjectId
+    && left.codexProjectKind === right.codexProjectKind
+    && left.workspacePath === right.workspacePath;
+}
+
 function exactTime(value: string, locale: string): string {
   return new Intl.DateTimeFormat(locale, {
     dateStyle: "medium",
@@ -590,6 +599,7 @@ export function TaskDetail({
   }, [activeMenuId]);
 
   async function saveTask(changes: Partial<TaskDraft>, property: string) {
+    if (submitting) return null;
     setSavingProperty(property);
     onError(null);
     try {
@@ -764,7 +774,7 @@ export function TaskDetail({
   }
 
   async function saveDescription() {
-    if (savingProperty === "description") return;
+    if (submitting || savingProperty === "description") return;
     const draftDescription = serializeInlineMedia(descriptionSegments).trim();
     const inlineImages = inlineMediaImages(descriptionSegments);
     const inlineFiles = inlineMediaFiles(descriptionSegments);
@@ -835,7 +845,14 @@ export function TaskDetail({
     const body = draft.trim();
     if (
       intent === "return"
-      && (!commentFeedback || currentTask.status !== "in_review" || !currentTask.threadBinding || !canContinueThread)
+      && (
+        !commentFeedback
+        || currentTask.status !== "in_review"
+        || currentTask.archivedAt !== null
+        || !currentTask.threadBinding
+        || !canContinueThread
+        || savingProperty !== null
+      )
     ) return;
     if ((!body && commentInlineImages.length === 0 && commentInlineFiles.length === 0) || submitting) return;
     setSubmitting(true);
@@ -866,20 +883,29 @@ export function TaskDetail({
       let relationAnchor = await getTask(currentTask.id);
       relationAnchor = await addMentionRelations(relationAnchor, commentSegments);
       if (intent === "return") {
-        if (relationAnchor.status !== "in_review" || !relationAnchor.threadBinding) {
+        if (
+          relationAnchor.status !== "in_review"
+          || relationAnchor.archivedAt !== null
+          || !relationAnchor.threadBinding
+        ) {
           throw new Error(text(
             "议题或任务绑定已变化，请刷新后重试。",
             "The issue or task binding changed. Refresh and try again.",
           ));
         }
+        const continuedBinding = relationAnchor.threadBinding;
         await onContinueThread(relationAnchor, commentFeedback);
         try {
           relationAnchor = await getTask(relationAnchor.id);
-          if (relationAnchor.status !== "in_review") {
+          if (
+            relationAnchor.status !== "in_review"
+            || relationAnchor.archivedAt !== null
+            || !sameThreadBinding(relationAnchor.threadBinding, continuedBinding)
+          ) {
             setCurrentTask(relationAnchor);
             setCommentsError(text(
-              "反馈已发送，但议题状态已变化，因此未改为处理中。请刷新议题；不要再次发送反馈。",
-              "Feedback was sent, but the issue status changed, so it was not moved to in progress. Refresh the issue; do not send the feedback again.",
+              "反馈已发送，但议题状态或任务绑定已变化，因此未改为处理中。请刷新议题；不要再次发送反馈。",
+              "Feedback was sent, but the issue status or task binding changed, so it was not moved to in progress. Refresh the issue; do not send the feedback again.",
             ));
             return;
           }
@@ -1271,7 +1297,7 @@ export function TaskDetail({
               )}
             />
 
-            {currentTask.status === "in_review" && (
+            {currentTask.status === "in_review" && currentTask.archivedAt === null && (
               <section className="review-acceptance" aria-labelledby="review-acceptance-heading">
                 <header>
                   <div>
@@ -1674,7 +1700,7 @@ export function TaskDetail({
                         <span aria-hidden="true" />
                       </button>
                     </div>
-                    {currentTask.status === "in_review" ? (
+                    {currentTask.status === "in_review" && currentTask.archivedAt === null ? (
                       <>
                         <button
                           className="button secondary"
@@ -1690,7 +1716,7 @@ export function TaskDetail({
                         <button
                           className="button primary"
                           type="button"
-                          disabled={!commentFeedback || submitting || !canContinueThread || !currentTask.threadBinding}
+                          disabled={!commentFeedback || submitting || savingProperty !== null || !canContinueThread || !currentTask.threadBinding}
                           onClick={() => void submitComment("return")}
                         >
                           {submitting
