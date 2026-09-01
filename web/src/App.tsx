@@ -294,6 +294,20 @@ interface PendingAutomationRequest {
   timeoutId: number;
 }
 
+interface ContinueThreadHostResponse {
+  requestId: string;
+  ok: boolean;
+  turnId?: string;
+  error?: string;
+  uncertain?: boolean;
+}
+
+interface PendingContinueThreadRequest {
+  resolve: (response: ContinueThreadHostResponse) => void;
+  reject: (error: Error) => void;
+  timeoutId: number;
+}
+
 const DEFAULT_USER_ACTOR: ActorIdentity = {
   type: "user",
   id: "local-user",
@@ -855,6 +869,7 @@ export function App() {
     );
   }
   const pendingAutomationRequestsRef = useRef(new Map<string, PendingAutomationRequest>());
+  const pendingContinueThreadRequestsRef = useRef(new Map<string, PendingContinueThreadRequest>());
   const automationRequestInFlightRef = useRef<"list" | "save" | null>(null);
   const loadedAutomationProjectIdsRef = useRef(new Set<string>());
   const queuedAutomationSavesRef = useRef(new Map<string, QueuedProjectAutomationSave>());
@@ -1760,6 +1775,31 @@ export function App() {
         return;
       }
 
+      if (message.type === "taskboard:continue-thread-response" && message.payload) {
+        const payload = message.payload as Partial<ContinueThreadHostResponse>;
+        if (typeof payload.requestId !== "string") return;
+        const pending = pendingContinueThreadRequestsRef.current.get(payload.requestId);
+        if (!pending) return;
+        window.clearTimeout(pending.timeoutId);
+        pendingContinueThreadRequestsRef.current.delete(payload.requestId);
+        if (payload.ok && typeof payload.turnId === "string") {
+          pending.resolve(payload as ContinueThreadHostResponse);
+        } else {
+          pending.reject(new Error(payload.uncertain
+            ? textRef.current(
+                "Codex 响应超时，反馈可能已发送。请打开原任务确认后再决定是否重试。",
+                "Codex timed out and the feedback may have been sent. Check the original task before retrying.",
+              )
+            : typeof payload.error === "string"
+              ? payload.error
+              : textRef.current(
+                  "无法继续原 Codex 任务。",
+                  "Could not continue the original Codex task.",
+                )));
+        }
+        return;
+      }
+
       if (message.type === "taskboard:theme" && isTheme(message.theme)) {
         setTheme(message.theme);
         return;
@@ -1810,6 +1850,14 @@ export function App() {
         )));
       }
       pendingAutomationRequestsRef.current.clear();
+      for (const pending of pendingContinueThreadRequestsRef.current.values()) {
+        window.clearTimeout(pending.timeoutId);
+        pending.reject(new Error(textRef.current(
+          "Taskboard 消息桥已关闭",
+          "The Taskboard host bridge was closed",
+        )));
+      }
+      pendingContinueThreadRequestsRef.current.clear();
     };
   }, [embedded, host]);
 
@@ -2645,7 +2693,11 @@ export function App() {
     void moveTask(task, destination, beforeTaskId, true);
   }
 
-  async function updateTaskProperties(task: Task, changes: Partial<TaskDraft>): Promise<Task> {
+  async function updateTaskProperties(
+    task: Task,
+    changes: Partial<TaskDraft>,
+    options?: { undo?: boolean },
+  ): Promise<Task> {
     const previous = task;
     const { assigneeTarget, ...taskChanges } = changes;
     const optimisticAssignee = assigneeTarget
@@ -2668,7 +2720,10 @@ export function App() {
         candidate.id === updated.id ? updated : candidate,
       )));
       const previousAssigneeTarget = assigneeTargetForActor(previous.assignee, currentUser);
-      if (!assigneeTarget || previousAssigneeTarget) {
+      if (options?.undo === false) {
+        undoStackRef.current = [];
+        setUndoNotice(null);
+      } else if (!assigneeTarget || previousAssigneeTarget) {
         pushUndo(
           null,
           () => restoreTaskDetails(previous, updated, previousAssigneeTarget),
@@ -2925,6 +2980,36 @@ export function App() {
       return;
     }
     window.location.assign(`codex://threads/${encodeURIComponent(binding.threadId.trim())}`);
+  }
+
+  function continueTaskThread(task: Task, feedback: string): Promise<void> {
+    if (host !== "codex" || window.parent === window || !task.threadBinding) {
+      return Promise.reject(new Error(textRef.current(
+        "当前议题没有可继续的完整 Codex 任务绑定。",
+        "This issue does not have a complete Codex task binding to continue.",
+      )));
+    }
+    const requestId = window.crypto.randomUUID();
+    const response = new Promise<ContinueThreadHostResponse>((resolve, reject) => {
+      const timeoutId = window.setTimeout(() => {
+        pendingContinueThreadRequestsRef.current.delete(requestId);
+        reject(new Error(textRef.current(
+          "Codex 响应超时，反馈可能已发送。请打开原任务确认后再决定是否重试。",
+          "Codex timed out and the feedback may have been sent. Check the original task before retrying.",
+        )));
+      }, 12_000);
+      pendingContinueThreadRequestsRef.current.set(requestId, { resolve, reject, timeoutId });
+    });
+    postEmbeddedHostMessage({
+      type: "taskboard:continue-thread-request",
+      payload: {
+        requestId,
+        identifier: task.identifier,
+        feedback,
+        threadBinding: task.threadBinding,
+      },
+    });
+    return response.then(() => undefined);
   }
 
   function openLegacyLocalThread(threadId: string) {
@@ -3689,7 +3774,7 @@ export function App() {
             attachmentsRevision={attachmentsRevision}
             onCreateLabel={persistProjectLabel}
             onDeleteLabel={removeProjectLabel}
-            onUpdate={(current, changes) => updateTaskProperties(current, changes)}
+            onUpdate={(current, changes, options) => updateTaskProperties(current, changes, options)}
             onOpenTask={openTaskDetail}
             onAddRelation={(current, type, relatedTaskId, origin) => (
               mutateTaskRelation("add", current, type, relatedTaskId, origin)
@@ -3698,6 +3783,8 @@ export function App() {
               mutateTaskRelation("remove", current, type, relatedTaskId, origin)
             )}
             onOpenThread={openThread}
+            canContinueThread={host === "codex" && window.parent !== window}
+            onContinueThread={continueTaskThread}
             onOpenLegacyLocalThread={openLegacyLocalThread}
             onOpenInThread={openTaskInThread}
             onCopy={(text, message) => void copyText(text, message)}

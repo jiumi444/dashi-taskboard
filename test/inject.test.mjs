@@ -10,6 +10,7 @@ const source = (await readFile(sourceUrl, "utf8")).replaceAll("\r\n", "\n");
 const webStyles = await readFile(new URL("../web/src/styles.css", import.meta.url), "utf8");
 const webApp = await readFile(new URL("../web/src/App.tsx", import.meta.url), "utf8");
 const embeddedHost = await readFile(new URL("../web/src/embeddedHost.mjs", import.meta.url), "utf8");
+const injectorHost = await readFile(new URL("../scripts/codex-injector.mjs", import.meta.url), "utf8");
 
 test("injection is an idempotent IIFE guarded by its current source hash", () => {
   assert.match(source, /^\(\(\) => \{/);
@@ -106,6 +107,15 @@ test("entry recognizes the reported localized Plugins labels and keeps Taskboard
     languageDocument.documentElement.lang = language;
     assert.equal(hostText("任务面板", "Taskboard"), "Taskboard");
   }
+});
+
+test("localized Plugins navigation closes the Taskboard surface", () => {
+  const nativePageLabels = source.slice(
+    source.indexOf("const NATIVE_PAGE_LABELS"),
+    source.indexOf("const PROJECT_SECTION_LABELS"),
+  );
+  assert.match(nativePageLabels, /"外掛程式"/);
+  assert.match(nativePageLabels, /"プラグイン"/);
 });
 
 test("opening Taskboard suppresses native selection and contextual header until close", () => {
@@ -922,4 +932,28 @@ test("host integration stays thin", () => {
   assert.doesNotMatch(source, /__codexSessionDeleteBridge/);
   assert.doesNotMatch(source, /import\s*\(/);
   assert.doesNotMatch(source, /window\.fetch\s*=/);
+});
+
+test("review feedback crosses the authenticated host bridge without creating a task", () => {
+  assert.match(webApp, /type: "taskboard:continue-thread-request"/);
+  assert.match(source, /message\.type === "taskboard:continue-thread-request"/);
+  assert.match(source, /requestHost\("continue-task-thread",/);
+  assert.match(source, /type: "taskboard:continue-thread-response"/);
+  assert.match(webApp, /message\.type === "taskboard:continue-thread-response"/);
+
+  const handlerStart = source.indexOf("async function continueTaskThread");
+  const handlerEnd = source.indexOf("\n\n  function handleExternalOpen", handlerStart);
+  const handler = source.slice(handlerStart, handlerEnd);
+  assert.ok(handlerStart >= 0 && handlerEnd > handlerStart);
+  assert.doesNotMatch(handler, /createThreadForTask|taskboard:create-thread|thread\/start/);
+});
+
+test("review feedback resumes an unloaded bound thread before starting the turn", () => {
+  const handlerStart = injectorHost.indexOf("continueTaskThread: async");
+  const handlerEnd = injectorHost.indexOf("\n      startConversation:", handlerStart);
+  const handler = injectorHost.slice(handlerStart, handlerEnd);
+  assert.ok(handlerStart >= 0 && handlerEnd > handlerStart);
+  const resumeIndex = handler.indexOf('"thread/resume"');
+  const startIndex = handler.indexOf('"turn/start"');
+  assert.ok(resumeIndex >= 0 && resumeIndex < startIndex);
 });

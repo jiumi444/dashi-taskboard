@@ -165,6 +165,139 @@ test("comments upload and render their own attachments in the content flow", () 
   assert.match(composerSource, /className="inline-media-attachment"/);
 });
 
+test("in-review details expose acceptance and exact-task return actions", () => {
+  assert.match(detailSource, /currentTask\.status === "in_review"[\s\S]*?className="review-acceptance"/);
+  assert.match(detailSource, /comments[\s\S]*?authorType === "agent"[\s\S]*?等待你验收/);
+  assert.match(detailSource, /通过并完成/);
+  assert.match(detailSource, /onUpdate\(currentTask, \{ status: "done" \}\)/);
+  assert.match(detailSource, /写退回意见/);
+  assert.match(detailSource, /commentComposerFormRef\.current\?\.scrollIntoView[\s\S]*?composerRef\.current\?\.focus\(\)/);
+  assert.match(detailSource, /createComment\([\s\S]*?getTask\([\s\S]*?onContinueThread\([\s\S]*?status: "in_progress"/);
+  assert.match(detailSource, /仅改为等待认领（不通知）/);
+  assert.match(detailSource, /退回并继续原任务/);
+  assert.match(styles, /\.review-acceptance/);
+  assert.match(styles, /\.composer-footer > div:last-child \{[\s\S]*?flex: 1 1 100%/);
+  assert.match(styles, /\.comment-status-action \{[\s\S]*?flex: 1 1 100%/);
+  assert.match(styles, /\.composer-footer \.button \{[\s\S]*?white-space: nowrap/);
+});
+
+test("only the Codex host exposes exact-task return", () => {
+  assert.match(appSource, /canContinueThread=\{host === "codex" && window\.parent !== window\}/);
+  const handlerStart = appSource.indexOf("function continueTaskThread");
+  const handlerEnd = appSource.indexOf("\n\n  function openLegacyLocalThread", handlerStart);
+  assert.match(appSource.slice(handlerStart, handlerEnd), /host !== "codex"/);
+});
+
+test("successful exact-task return invalidates the Taskboard undo queue", () => {
+  assert.match(
+    detailSource,
+    /onUpdate\(relationAnchor, \{ status: "in_progress" \}, \{ undo: false \}\)/,
+  );
+  assert.match(
+    appSource,
+    /if \(options\?\.undo === false\) \{[\s\S]*?undoStackRef\.current = \[\];[\s\S]*?setUndoNotice\(null\);/,
+  );
+});
+
+test("exact-task return requires and sends textual feedback", () => {
+  assert.match(detailSource, /const commentFeedback = inlineMediaText\(commentSegments\)\.trim\(\)/);
+  assert.match(detailSource, /intent === "return"[\s\S]*?!commentFeedback[\s\S]*?currentTask\.status/);
+  assert.match(detailSource, /onContinueThread\(relationAnchor, commentFeedback\)/);
+  assert.match(
+    detailSource,
+    /disabled=\{!commentFeedback \|\| submitting[\s\S]*?!canContinueThread \|\| !currentTask\.threadBinding\}/,
+  );
+});
+
+test("exact-task return refreshes the task version after the Codex turn starts", () => {
+  const handlerStart = detailSource.indexOf("async function submitComment");
+  const handlerEnd = detailSource.indexOf("\n\n  function handleSubmitShortcut", handlerStart);
+  const handler = detailSource.slice(handlerStart, handlerEnd);
+  const continueIndex = handler.indexOf("await onContinueThread");
+  const refreshIndex = handler.indexOf("relationAnchor = await getTask(relationAnchor.id)", continueIndex);
+  const updateIndex = handler.indexOf("await onUpdate(relationAnchor", continueIndex);
+  assert.ok(continueIndex >= 0 && continueIndex < refreshIndex && refreshIndex < updateIndex);
+});
+
+test("exact-task return treats the post-send refresh as an irreversible status-update step", () => {
+  const handlerStart = detailSource.indexOf("async function submitComment");
+  const handlerEnd = detailSource.indexOf("\n\n  function handleSubmitShortcut", handlerStart);
+  const handler = detailSource.slice(handlerStart, handlerEnd);
+  assert.match(
+    handler,
+    /await onContinueThread[\s\S]*?try \{[\s\S]*?relationAnchor = await getTask\(relationAnchor\.id\)/,
+  );
+});
+
+test("exact-task return only moves the latest in-review task back to in-progress", () => {
+  const handlerStart = detailSource.indexOf("async function submitComment");
+  const handlerEnd = detailSource.indexOf("\n\n  function handleSubmitShortcut", handlerStart);
+  const handler = detailSource.slice(handlerStart, handlerEnd);
+  assert.match(
+    handler,
+    /relationAnchor = await getTask\(relationAnchor\.id\)[\s\S]*?relationAnchor\.status !== "in_review"[\s\S]*?return;[\s\S]*?onUpdate\(relationAnchor, \{ status: "in_progress" \}/,
+  );
+});
+
+test("exact-task return keeps the task bound to the thread that was continued", () => {
+  const handlerStart = detailSource.indexOf("async function submitComment");
+  const handlerEnd = detailSource.indexOf("\n\n  function handleSubmitShortcut", handlerStart);
+  const handler = detailSource.slice(handlerStart, handlerEnd);
+  assert.match(handler, /const continuedBinding = relationAnchor\.threadBinding/);
+  assert.match(
+    handler,
+    /relationAnchor = await getTask\(relationAnchor\.id\)[\s\S]*?!sameThreadBinding\(relationAnchor\.threadBinding, continuedBinding\)[\s\S]*?return;[\s\S]*?onUpdate\(relationAnchor, \{ status: "in_progress" \}/,
+  );
+});
+
+test("archived in-review tasks cannot expose or execute acceptance actions", () => {
+  assert.match(
+    detailSource,
+    /currentTask\.status === "in_review" && currentTask\.archivedAt === null/,
+  );
+  assert.match(
+    detailSource,
+    /intent === "return"[\s\S]*?currentTask\.archivedAt !== null/,
+  );
+  assert.match(
+    detailSource,
+    /relationAnchor = await getTask\(relationAnchor\.id\)[\s\S]*?relationAnchor\.archivedAt !== null[\s\S]*?return;/,
+  );
+});
+
+test("exact-task return does not overlap task property saves", () => {
+  assert.match(detailSource, /async function saveTask[\s\S]*?if \(submitting \|\| savingProperty !== null\) return null;/);
+  assert.match(detailSource, /async function saveDescription[\s\S]*?if \(submitting \|\| savingProperty !== null\) return;/);
+  assert.match(
+    detailSource,
+    /intent === "return"[\s\S]*?savingProperty !== null/,
+  );
+  assert.match(
+    detailSource,
+    /disabled=\{!commentFeedback \|\| submitting \|\| savingProperty !== null/,
+  );
+});
+
+test("post-send failures remain visible after the detail component unmounts", () => {
+  assert.match(
+    detailSource,
+    /function reportSentStatusError[\s\S]*?setCommentsError\(message\)[\s\S]*?onError\(message\)/,
+  );
+  const handlerStart = detailSource.indexOf("async function submitComment");
+  const handlerEnd = detailSource.indexOf("\n\n  function handleSubmitShortcut", handlerStart);
+  const handler = detailSource.slice(handlerStart, handlerEnd);
+  assert.equal(handler.match(/reportSentStatusError\(text\(/g)?.length, 2);
+});
+
+test("comment mention relations persist before exact-task continuation", () => {
+  const handlerStart = detailSource.indexOf("async function submitComment");
+  const handlerEnd = detailSource.indexOf("\n\n  function handleSubmitShortcut", handlerStart);
+  const handler = detailSource.slice(handlerStart, handlerEnd);
+  const relationIndex = handler.indexOf("await addMentionRelations");
+  const continueIndex = handler.indexOf("await onContinueThread");
+  assert.ok(relationIndex >= 0 && relationIndex < continueIndex);
+});
+
 test("issue creation and detail share one searchable, creatable label picker", () => {
   assert.match(editorSource, /<LabelPicker/);
   assert.match(detailSource, /<LabelPicker/);
